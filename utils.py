@@ -181,7 +181,7 @@ class SkyMap:
 
         return self
 
-    def border(self, n=100):
+    def border(self):
         if self.logging: print("Setting border...", end="", flush=True)
         if self.width > 355 and False:
             theta = np.linspace(0, 2 * np.pi, 100)
@@ -190,12 +190,13 @@ class SkyMap:
             circle = mpath.Path(verts * radius + center)
             self.ax.set_boundary(circle, transform=self.ax.transAxes)
         else:
-            ra_interpolated = np.linspace(-self.centre_ra - self.width / 2, -self.centre_ra + self.width / 2, n)
-            top_line = np.vstack((ra_interpolated, (self.centre_de + self.height / 2) * np.ones_like(ra_interpolated))).T
-            bot_line = np.vstack(
-                (np.flip(ra_interpolated, axis=0), (self.centre_de - self.height / 2) * np.ones_like(ra_interpolated))).T
+            ra_interpolated = np.linspace(-self.centre_ra - self.width / 2, -self.centre_ra + self.width / 2, 200)
+            top_line = np.vstack(
+                (ra_interpolated, (self.centre_de + self.height / 2) * np.ones_like(ra_interpolated))).T
+            # bot_line = np.vstack(
+            #     (np.flip(ra_interpolated, axis=0), (self.centre_de - self.height / 2) * np.ones_like(ra_interpolated))).T
 
-            vertices = np.vstack((top_line, bot_line))
+            vertices = self._border_path().vertices  # np.vstack((top_line, bot_line))
             if self.width > 359:
                 vertices = np.array(top_line)
             rect = mpath.Path(vertices=vertices)
@@ -203,7 +204,7 @@ class SkyMap:
             rect_in_target = proj_to_data.transform_path(rect)
 
             self.ax.set_boundary(rect_in_target)
-
+            # self.ax.set_boundary(self._border_path(), transform=ccrs.PlateCarree())
 
         if self.logging: print(" done")
         return self
@@ -408,11 +409,6 @@ class SkyMap:
                 fontsize = major_fontsize
 
             ra_coord = -ra * 15  # to degrees
-            points = transform.transform([[ra_coord - 0.01, top_de], [ra_coord + 0.01, top_de]])
-            angle = angle_between(points[0], points[1]) + np.pi
-
-            text_offset_x, text_offset_y = text_offset * np.sin(angle), \
-                                           text_offset * np.cos(angle)
 
             ra_str = f"{ra:.0f}$^{{\\rm h}}$" if ra % maj_ra_inc == 0 else f"{ra * 60 % 60:.0f}$^{{\\rm m}}$"
 
@@ -422,6 +418,11 @@ class SkyMap:
                         if de == top_de: break
                     else:
                         if de == bottom_de: break
+                points = transform.transform([[ra_coord - 0.01, de], [ra_coord + 0.01, de]])
+                angle = angle_between(points[0], points[1]) + np.pi
+
+                text_offset_x, text_offset_y = text_offset * np.sin(angle), \
+                                               text_offset * np.cos(angle)
                 self.ax.annotate(ra_str,
                                  xy=(ra_coord, de),
                                  xytext=(-text_offset_x if de == top_de else text_offset_x,
@@ -436,24 +437,24 @@ class SkyMap:
                                  fontsize=fontsize)
 
             if ra % maj_ra_inc == 0:
-                path = mpath.Path([[ra_coord, top_de], [ra_coord, bottom_de]])
+                path = mpath.Path([[ra_coord, top_de], [ra_coord, bottom_de]]).interpolated(100)
                 self.ax.add_patch(mpatches.PathPatch(path, **gridline_params))
-                self.tick(ra_coord, top_de, major_tick_length,"meridian", "positive")
-                self.tick(ra_coord, bottom_de, major_tick_length, "meridian", "negative")
+                self.tick(-ra_coord, top_de, major_tick_length, "meridian", "positive")
+                self.tick(-ra_coord, bottom_de, major_tick_length, "meridian", "negative")
             else:
-                self.tick(ra_coord, top_de, minor_tick_length, "meridian", "positive")
-                self.tick(ra_coord, bottom_de, minor_tick_length, "meridian", "negative")
+                self.tick(-ra_coord, top_de, minor_tick_length, "meridian", "positive")
+                self.tick(-ra_coord, bottom_de, minor_tick_length, "meridian", "negative")
 
         if self.width < 350:
             for ra_h in left_ra, right_ra:
                 text_offset = 5  # points
-                ra = -ra_h
-                points = transform.transform([[ra - 0.01, top_de], [ra + 0.01, top_de]])
-                angle = angle_between(points[0], points[1]) + np.pi
-                text_offset_y, text_offset_x = text_offset * np.sin(angle), \
-                                               text_offset * np.cos(angle)
-
                 for de in major_de:
+                    ra = -ra_h
+                    points = transform.transform([[ra - 0.01, de], [ra + 0.01, de]])
+                    angle = angle_between(points[0], points[1]) + np.pi
+                    text_offset_y, text_offset_x = text_offset * np.sin(angle), \
+                                                   text_offset * np.cos(angle)
+
                     self.ax.annotate(f"{de}$^o$",
                                      xy=(ra, de),
                                      xytext=(-text_offset_x if ra_h != left_ra else text_offset_x,
@@ -482,37 +483,85 @@ class SkyMap:
         trans = (self.fig.dpi_scale_trans +
                  mtransforms.ScaledTranslation(-ra, dec, ccrs.PlateCarree()._as_mpl_transform(self.ax)))
 
-        angle_points = [[ra-0.01, dec], [ra+0.01, dec]] if orientation == "meridian" else [[ra, dec-0.01], [ra, dec+0.01]]
-
-        angle = angle_between(*(ccrs.PlateCarree()._as_mpl_transform(self.ax) - self.ax.transData)
-                              .transform(angle_points)) - np.pi
+        angle = self._get_angle(ra, dec, orientation)
 
         direction_mult = 1 if direction == "positive" else -1
 
-        tick = np.array([[0,0],[np.sin(angle), np.cos(angle)]]) * direction_mult * length / 72  # divide by 72 for pt
+        tick = np.array([[0, 0], [np.cos(angle), np.sin(angle)]]) * direction_mult * length / 72  # divide by 72 for pt
 
         self.ax.add_patch(mpatches.PathPatch(mpath.Path(tick),
                                              transform=trans,
                                              clip_on=False))
 
+    def _get_angle(self, ra: float, dec: float, orientation: Literal["meridian", "parallel"]) -> float:
+        angle_points = [[-ra - 0.01, dec],
+                        [-ra + 0.01, dec]] if orientation == "parallel" else [[-ra, dec - 0.01],
+                                                                              [-ra, dec + 0.01]]
+
+        transformed_points = (ccrs.PlateCarree()._as_mpl_transform(self.ax) - self.ax.transData).transform(angle_points)
+
+        return angle_between(*transformed_points) - np.pi
+
+    def wide_border(self, distance=42):  # distance in pt
+        corners = [[self.centre_ra + self.width / 2, self.centre_de + self.height / 2],  # top right
+                   [self.centre_ra - self.width / 2, self.centre_de + self.height / 2],  # top left
+                   [self.centre_ra - self.width / 2, self.centre_de - self.height / 2],  # bottom left
+                   [self.centre_ra + self.width / 2, self.centre_de - self.height / 2],  # bottom right
+                   [self.centre_ra + self.width / 2, self.centre_de + self.height / 2]]  # top right
+
+        vertices = []
+
+        for ra, dec in corners:
+            trans = self.fig.dpi_scale_trans + mtransforms.ScaledTranslation(-ra, dec, ccrs.PlateCarree()._as_mpl_transform(self.ax))
+            angle_m = self._get_angle(ra, dec, 'meridian')
+            dir_m = 1 if dec > self.centre_de else -1
+            vec_m = dir_m * np.array([np.cos(angle_m), np.sin(angle_m)])
+
+            angle_p = self._get_angle(ra, dec, 'parallel')
+            dir_p = 1 if ra < self.centre_ra else -1
+            vec_p = dir_p * np.array([np.cos(angle_p), np.sin(angle_p)])
+
+            vert = (vec_m + vec_p) * distance/72
+            trans_vert = trans.transform(vert)
+
+            # self.ax.add_patch(mpatches.Circle(vert, 10/72, facecolor='red', transform=trans, clip_on=False))
+
+            vertices.append(trans_vert)
+
+        # for vertex in vertices:
+        #     self.ax.add_patch(mpatches.Circle(vertex, 20, facecolor='blue', transform=None, clip_on=False))
+        return self
+
+    def _border_path(self, interpolated=True):
+        border = mpath.Path([[-self.centre_ra + self.width / 2, self.centre_de + self.height / 2],  # top right
+                             [-self.centre_ra, self.centre_de + self.height / 2],  # top centre
+                             [-self.centre_ra - self.width / 2, self.centre_de + self.height / 2],  # top left
+                             [-self.centre_ra - self.width / 2, self.centre_de - self.height / 2],  # bottom left
+                             [-self.centre_ra, self.centre_de - self.height / 2],  # bottom centre
+                             [-self.centre_ra + self.width / 2, self.centre_de - self.height / 2],  # bottom right
+                             [-self.centre_ra + self.width / 2, self.centre_de + self.height / 2]])  # top right
+        if interpolated:
+            return border.interpolated(200)
+        return border
+
     def set_extent(self):
         if self.width > 355:
-            print(self.centre_de + self.height/2)
-            self.ax.set_extent([-180, 180, self.centre_de, self.centre_de + (-1 if self.centre_de > 90 else 1) * self.height/2],
-                               crs=ccrs.PlateCarree())
+            if self.height < 90:
+                self.ax.set_extent(
+                    [-180, 180, self.centre_de, self.centre_de + (-1 if self.centre_de > 90 else 1) * self.height / 2],
+                    crs=ccrs.PlateCarree())
+            else:
+                self.ax.set_extent([-180, 180, self.centre_de - self.height / 2, self.centre_de + self.height / 2],
+                                   crs=ccrs.PlateCarree())
         else:
             transform = (ccrs.PlateCarree()._as_mpl_transform(self.ax) - self.ax.transData)
-            if self.centre_de < 0:
-                # in the southern hemisphere
-                _, top = transform.transform((-self.centre_ra, self.centre_de + self.height/2))
-                _, bottom = transform.transform((-self.centre_ra - self.width/2, self.centre_de - self.height/2))
-                self.ax.set_ylim(bottom, top)
-                left, _ = transform.transform((-self.centre_ra - self.width/2, self.centre_de + self.height/2))
-                right, _ = transform.transform((-self.centre_ra + self.width/2, self.centre_de + self.height/2))
+            transformed_points = transform.transform(self._border_path().vertices)
+            ra, dec = np.moveaxis(transformed_points, 1, 0)
+            self.ax.set_ylim(np.min(dec), np.max(dec))
+            self.ax.set_xlim(np.min(ra), np.max(ra))
 
-                self.ax.set_xlim(left, right)
-
-    def show(self):
+    @staticmethod
+    def show():
         plt.show()
 
 

@@ -4,10 +4,10 @@ import cartopy.crs as ccrs
 import utils
 
 WIDTH = 30 # degrees
-HEIGHT = 20.0  # degrees
-CENTRE_RA = 12 * 15  # degrees
-CENTRE_DE = -60.0  # degrees
-TRANSFORM = ccrs.Stereographic(central_latitude=CENTRE_DE, central_longitude=CENTRE_RA)
+HEIGHT = 20  # degrees
+CENTRE_RA = 21 * 15  # degrees
+CENTRE_DE = -40.0  # degrees
+TRANSFORM = ccrs.SouthPolarStereo(central_longitude=-CENTRE_RA)
 
 #ccrs.SouthPolarStereo()
 
@@ -20,10 +20,11 @@ sm = utils.SkyMap(CENTRE_RA, CENTRE_DE, WIDTH, HEIGHT, TRANSFORM)\
         .plot_stars()\
         .constellation_paths()\
         .constellation_boundaries() \
-        .border() \
         .ecliptic() \
-        .labels()
-# .ngc() \
+        .labels() \
+        .border() \
+        .wide_border()
+        # .ngc() \
 
 sm.store.close()
 
@@ -31,7 +32,7 @@ sm.store.close()
 
 # print("Showing...")
 
-# plt.savefig('out.svg')
 
 sm.tick(45, CENTRE_DE + HEIGHT/2, 5, "meridian", "positive")
-sm.show()
+plt.savefig('south-polar-section.png')
+# sm.show()
