@@ -60,7 +60,7 @@ spectral_colors = defaultdict(lambda: '#000', {
 
 class SkyMap:
 
-    def __init__(self, centre_ra, centre_de, width, height, transform, logging=True,
+    def __init__(self, centre_ra, centre_de, width, height, transform: ccrs.Projection, logging=True,
                  star_colors: Literal["bv", "type"] = "type", figsize=(16, 9)):
         self.ngc_cat = None
         self.ecliptic_coords = None
@@ -512,7 +512,7 @@ class SkyMap:
         vertices = []
 
         for ra, dec in corners:
-            trans = self.fig.dpi_scale_trans + mtransforms.ScaledTranslation(-ra, dec, ccrs.PlateCarree()._as_mpl_transform(self.ax))
+            transform = self.ax.transData
             angle_m = self._get_angle(ra, dec, 'meridian')
             dir_m = 1 if dec > self.centre_de else -1
             vec_m = dir_m * np.array([np.cos(angle_m), np.sin(angle_m)])
@@ -521,15 +521,17 @@ class SkyMap:
             dir_p = 1 if ra < self.centre_ra else -1
             vec_p = dir_p * np.array([np.cos(angle_p), np.sin(angle_p)])
 
-            vert = (vec_m + vec_p) * distance/72
-            trans_vert = trans.transform(vert)
+            vert = np.array([ra, dec]) + ((vec_m + vec_p) * distance/72)
+            print(vert)
+            trans_vert = ccrs.PlateCarree().transform_point(*vert, self.transform)
+            print(trans_vert)
+            self.ax.add_patch(mpatches.Circle(vert, 1/72, facecolor='red', transform=ccrs.PlateCarree()._as_mpl_transform(self.ax), clip_on=False))
 
-            # self.ax.add_patch(mpatches.Circle(vert, 10/72, facecolor='red', transform=trans, clip_on=False))
+        # trans = self.fig.dpi_scale_trans + ccrs.PlateCarree()._as_mpl_transform(self.ax)
+        # for idx, vert in enumerate(vertices):
+        #     vert[1] *= -1
+        #     print(vert)
 
-            vertices.append(trans_vert)
-
-        # for vertex in vertices:
-        #     self.ax.add_patch(mpatches.Circle(vertex, 20, facecolor='blue', transform=None, clip_on=False))
         return self
 
     def _border_path(self, interpolated=True):

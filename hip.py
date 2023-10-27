@@ -1,4 +1,5 @@
-import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('qtagg')
 import cartopy.crs as ccrs
 
 import utils
@@ -34,5 +35,5 @@ sm.store.close()
 
 
 sm.tick(45, CENTRE_DE + HEIGHT/2, 5, "meridian", "positive")
-plt.savefig('south-polar-section.png')
-# sm.show()
+# plt.savefig('south-polar-section.png')
+sm.show()
