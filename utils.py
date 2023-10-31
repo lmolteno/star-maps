@@ -502,17 +502,25 @@ class SkyMap:
 
         return angle_between(*transformed_points) - np.pi
 
+    # noinspection PyTypeChecker
     def wide_border(self, distance=42):  # distance in pt
-        corners = [[self.centre_ra + self.width / 2, self.centre_de + self.height / 2],  # top right
+        points = [[self.centre_ra + self.width / 2, self.centre_de + self.height / 2],  # top right
                    [self.centre_ra - self.width / 2, self.centre_de + self.height / 2],  # top left
                    [self.centre_ra - self.width / 2, self.centre_de - self.height / 2],  # bottom left
                    [self.centre_ra + self.width / 2, self.centre_de - self.height / 2],  # bottom right
                    [self.centre_ra + self.width / 2, self.centre_de + self.height / 2]]  # top right
 
-        vertices = []
+        offset_points = []
 
-        for ra, dec in corners:
-            transform = self.ax.transData
+        lons, lats = zip(*points)
+
+        transformed = self.transform.transform_points(ccrs.PlateCarree(), -np.array(lons), np.array(lats))
+        ra_dec = np.delete(transformed, 2, 1)
+        display_points = self.ax.transData.transform(ra_dec)
+        print(display_points)
+        for point in display_points:
+            self.ax.add_patch(mpatches.Circle(point, 5, transform=self.fig.dpi_scale_trans, clip_on=False))
+        for (ra, dec) in points:
             angle_m = self._get_angle(ra, dec, 'meridian')
             dir_m = 1 if dec > self.centre_de else -1
             vec_m = dir_m * np.array([np.cos(angle_m), np.sin(angle_m)])
@@ -521,19 +529,13 @@ class SkyMap:
             dir_p = 1 if ra < self.centre_ra else -1
             vec_p = dir_p * np.array([np.cos(angle_p), np.sin(angle_p)])
 
-            vert = np.array([ra, dec]) + ((vec_m + vec_p) * distance/72)
-            print(vert)
-            trans_vert = ccrs.PlateCarree().transform_point(*vert, self.transform)
-            print(trans_vert)
-            self.ax.add_patch(mpatches.Circle(vert, 1/72, facecolor='red', transform=ccrs.PlateCarree()._as_mpl_transform(self.ax), clip_on=False))
-
-        # trans = self.fig.dpi_scale_trans + ccrs.PlateCarree()._as_mpl_transform(self.ax)
-        # for idx, vert in enumerate(vertices):
-        #     vert[1] *= -1
-        #     print(vert)
+            offset = ((vec_m + vec_p) * distance/72)
+            offset_points.append(transformed)
 
         return self
 
+
+    # noinspection PyTypeChecker
     def _border_path(self, interpolated=True):
         border = mpath.Path([[-self.centre_ra + self.width / 2, self.centre_de + self.height / 2],  # top right
                              [-self.centre_ra, self.centre_de + self.height / 2],  # top centre
